@@ -8,14 +8,17 @@ BEGIN { eval "use threads; use threads::shared;" }
 use Scalar::Util    qw/blessed reftype tainted/;
 use Test::More;
 use B               qw/SVf_ROK/;
-use ExtUtils::MM;
+use File::Temp      qw/tempfile/;
 use Taint::Runtime  qw/taint_start taint_stop taint/;
 use Clone::Closure  qw/clone/;
 
 # Test::Builder has some too-clever-by-half fakery to detect if the test
 # actually dies; however, under 5.6.1 it gets confused by eval {} :(
 
-if ($] < 5.008) {
+# It turns out [rt.cpan.org#12359] that this is caused by my use of $^P,
+# and is fixed by perl@24291 (went into 5.8.7).
+
+if ($] < 5.008007) {
     my $die = $SIG{__DIE__};
     $SIG{__DIE__} = sub {
         ($^S and defined $^S) or $die->();
@@ -131,10 +134,10 @@ sub isnt_flag { return _test_flag 1, @_; }
 
 sub oneliner {
     my ($perl) = @_;
-    $perl =~ tr/\r\n//d;
-    my $cmd = "$^X -e " . MM->quote_literal($perl);
-    my $val = qx/$cmd/;
-    $? and $val = "qx/$cmd/ failed with \$? = $?";
+    my ($SCRIPT, $script) = tempfile('XXXXXXXX', UNLINK => 1);
+    print $SCRIPT $perl;
+    my $val = qx/$^X $script/;
+    $? and $val = "Perl script\n$perl\nfailed with \$? = $?";
     return $val;
 }
 
