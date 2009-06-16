@@ -217,10 +217,14 @@ CC_cv_clone(CV *ref)
 
     /* BEGIN, eval &c. */
     assert(!CvUNIQUE(ref));
+#if PERL_VERSION > 9
     /* closure prototype */
     assert(!CvCLONE(ref));
+#endif
+    /* named sub */
+    assert(CvANON(ref));
     /* an instantiated closure shouldn't be WEAKOUTSIDE */
-    assert(!(CvCLONED(ref) && CvWEAKOUTSIDE(ref)));
+    assert(!(!CvCLONE(ref) && CvWEAKOUTSIDE(ref)));
 
     outside = CvOUTSIDE(ref);
     assert(CvPADLIST(outside));
@@ -307,6 +311,7 @@ pad_clone(HV *SEEN, CV *ref, CV *clone)
         SV  **old_p, *old_sv, *new_sv;
         const char *name;
         bool  can_copy;
+        bool  is_proto;
 
         name_p  = av_fetch(padn, i, 0);
         name_sv = name_p ? *name_p : &PL_sv_undef;
@@ -316,6 +321,8 @@ pad_clone(HV *SEEN, CV *ref, CV *clone)
 
         val_p    = av_fetch(padr, i, 0);
         val_sv   = val_p ? *val_p : &PL_sv_undef;
+
+        is_proto = 0;
 
         /* The following types of entries exist in pads... */
 
@@ -345,8 +352,20 @@ pad_clone(HV *SEEN, CV *ref, CV *clone)
         /* entries with names are lexicals */
         else if (name_sv != &PL_sv_undef) {
 
+            /* closure prototypes must be copied */
+            if (*name == '&') {
+#if PERL_VERSION < 9
+                if (!SvFAKE(name_sv)) {
+                    can_copy = 0;
+                    is_proto = 1;
+                }
+                else
+#endif
+                can_copy = 1;
+            }
+
             /* non-closures must clone all lexicals */
-            if (!CvCLONED(clone)) {
+            else if (!CvCLONED(clone)) {
                 can_copy = 0;
             }
 
@@ -394,7 +413,37 @@ pad_clone(HV *SEEN, CV *ref, CV *clone)
 
         TRACE_SV("ref", name, val_sv);
 
-        if (can_copy) {
+        if (is_proto) {
+            assert(PERL_VERSION < 9);
+#ifdef CvWEAKOUTSIDE_on
+            assert(CvWEAKOUTSIDE(val_sv));
+#endif
+
+            new_sv = (SV *)CC_cv_clone((CV *)val_sv);
+
+            CvCLONE_on(new_sv);
+            SvPADMY_on(new_sv);
+
+#ifndef CvWEAKOUTSIDE_on
+            {
+                CV *old = CvOUTSIDE(new_sv);
+                SvREFCNT_dec(old);
+                TRACE_SV("ref", "outside", old);
+            }
+#endif
+            CvOUTSIDE(new_sv) = clone;
+#ifdef CvWEAKOUTSIDE_on
+            TRACE_SV("weaken", name, new_sv);
+            TRACE_SV("outside", name, clone);
+            CvWEAKOUTSIDE_on(new_sv);
+#else
+            SvREFCNT_inc(clone);
+            TRACE_SV("clone", "outside", clone);
+#endif
+
+            pad_clone(SEEN, (CV *)val_sv, (CV *)new_sv);
+        }
+        else if (can_copy) {
             new_sv = SvREFCNT_inc(val_sv);
             CLONE_STORE(val_sv, new_sv);
         }
@@ -417,6 +466,8 @@ pad_clone(HV *SEEN, CV *ref, CV *clone)
             SvREFCNT_dec(old_sv);
             TRACE_SV("drop", name, old_sv);
         }
+        else
+            TRACE_SV("NO DROP", name, old_sv);
     }
 
     TRACE_SV("clone", "pad", clone);
@@ -572,9 +623,24 @@ sv_clone(HV *SEEN, SV *ref)
             break;
 
         case SVt_PVCV:	/* 12 */
-            TRACEME(("  CV\n"));
-            clone = (SV *)CC_cv_clone ((CV *) ref);
-            break;
+            {
+                CV *cv = (CV *)ref;
+                /* we shouldn't be cloning a closure prototype */
+                /* (when nec. pad_clone calls CC_cv_clone directly) */
+                assert(!CvCLONE(cv));
+
+                if (CvCLONED(cv)) {
+                    /* closures are cloned */
+                    TRACEME(("  CV (closure)\n"));
+                    clone = (SV *)CC_cv_clone(cv);
+                }
+                else {
+                    /* named subs aren't cloned */
+                    TRACEME(("  CV\n"));
+                    clone = SvREFCNT_inc(ref);
+                }
+                break;
+            }
 
         case SVt_PVGV:	/* 13 */
             if (isGV_with_GP(ref)) {
@@ -736,7 +802,9 @@ sv_clone(HV *SEEN, SV *ref)
         av_clone(SEEN, (AV *)ref, (AV *)clone);
     }
     else if ( SvTYPE(ref) == SVt_PVCV ) {
-        pad_clone(SEEN, (CV *)ref, (CV *)clone);
+        if (CvCLONED((CV *)ref)) {
+            pad_clone(SEEN, (CV *)ref, (CV *)clone);
+        }
     }
     /* 3: REFERENCE (inlined for speed) */
     else if (SvROK(ref)) {

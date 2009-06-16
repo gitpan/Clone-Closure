@@ -8,7 +8,7 @@ use Carp;
 use base 'Exporter';
 our @EXPORT_OK = qw( clone );
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use XSLoader;
 XSLoader::load __PACKAGE__, $VERSION;
@@ -53,6 +53,11 @@ them in by reference, e.g.
     # or
 
     my %copy = %{ clone \%hash };
+
+=head2 Values which are not cloned
+
+Sub (except for L</Closures>), glob, format and IO refs are simply
+duplicated, not cloned.
 
 =head2 Closures
 

@@ -1,10 +1,27 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         Clone
-version:      0.23
-version_from: Clone.pm
-installdirs:  site
-requires:
-
+---
+abstract: 'A clone that knows how to clone closures'
+author:
+  - 'This module is based on Clone v0.23 by Ray Finch, <rdf@cpan.org>.'
+build_requires:
+  Data::Dumper: 0
+  File::Temp: 0.16
+  Scalar::Util: 1.14
+  Taint::Runtime: 0
+  Test::More: 0.68
 distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30_01
+generated_by: 'Module::Install version 0.79'
+license: perl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: Clone-Closure
+no_index:
+  directory:
+    - inc
+    - t
+requires:
+  XSLoader: 0
+  perl: 5.6.1
+resources:
+  license: http://dev.perl.org/licenses/
+version: 0.03
