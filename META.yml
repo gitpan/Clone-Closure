@@ -22,10 +22,10 @@ name: Clone-Closure
 provides:
   Clone::Closure:
     file: lib/Clone/Closure.pm
-    version: 0.05
+    version: 0.06
 requires:
   XSLoader: 0
 resources:
   license: http://dev.perl.org/licenses/
   repository: http://github.com/mauzo/Clone-Closure
-version: 0.05
+version: 0.06
